@@ -1583,3 +1583,6 @@ Observer.prototype.observe@resource://unity/observer.js:77:24
 (gnome-terminal:15541): GLib-GIO-CRITICAL **: g_settings_get: the format string may not contain '&' (key 'ignore-hosts' from schema 'org.gnome.system.proxy'). This call will probably stop working with a future version of glib.
 javaldx: Could not find a Java Runtime Environment!
 Warning: failed to read path from javaldx
+ERROR 2016-01-19 16:04:26 unity <unknown>:0 atk_object_ref_state_set: assertion 'ATK_IS_OBJECT (accessible)' failed
+ERROR 2016-01-19 16:04:26 unity <unknown>:0 atk_state_set_contains_state: assertion 'ATK_IS_STATE_SET (set)' failed
+ERROR 2016-01-19 16:04:26 unityy <unknown>:0 g_object_unref: assertion 'G_IS_OBJECT (object)' failed
