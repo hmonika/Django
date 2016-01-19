@@ -1,0 +1,308 @@
+var _gaq = _gaq || [];
+
+(function() {
+    
+    var version = "090413-1757";
+    var trackingEnabledClass = "tracking-enabled";
+    
+    var contentLoaded = function(win, fn) {
+        var done = false, top = true,
+        doc = win.document, root = doc.documentElement,
+        add = doc.addEventListener ? 'addEventListener' : 'attachEvent',
+        rem = doc.addEventListener ? 'removeEventListener' : 'detachEvent',
+        pre = doc.addEventListener ? '' : 'on',
+    
+        init = function(e) {
+            if (e.type == 'readystatechange' && doc.readyState != 'complete') return;
+            (e.type == 'load' ? win : doc)[rem](pre + e.type, init, false);
+            if (!done && (done = true)) fn.call(win, e.type || e);
+        },
+    
+        poll = function() {
+            try { root.doScroll('left'); } catch(e) { setTimeout(poll, 50); return; }
+            init('poll');
+        };
+    
+        if (doc.readyState == 'complete') fn.call(win, 'lazy');
+        else {
+            if (doc.createEventObject && root.doScroll) {
+                try { top = !win.frameElement; } catch(e) { }
+                if (top) poll();
+            }
+            doc[add](pre + 'DOMContentLoaded', init, false);
+            doc[add](pre + 'readystatechange', init, false);
+            win[add](pre + 'load', init, false);
+        }
+    };
+
+    var loadScript = function (src, callback){
+      var s, r;
+      r = false;
+      s = document.createElement('script');
+      s.type = 'text/javascript';
+      s.src = src;
+      s.onload = s.onreadystatechange = function() {
+        if (!r && (!this.readyState || this.readyState == 'complete'))
+        {
+          r = true;
+          callback();
+        }
+      };
+      document.body.appendChild(s);
+    }
+    
+    var getCurrentLanguage =  function(){
+        
+        // Check if page has a #lang value
+        try {
+            var lang = $(window.top.frames["HelpToolbarFrame"].frames["SearchFrame"].document).find("#lang").val() || 'en';
+
+            var spaceIndex = lang.indexOf(" ");
+            var slashIndex = lang.indexOf("/");
+        
+            if (spaceIndex > 0){
+                return lang.substring(0, spaceIndex);
+            }
+            else if (slashIndex > 0) {
+                return lang.substring(0, slashIndex);
+            } 
+            else {
+                return lang;
+            }
+        } 
+        catch(err) {
+            return $(window.top.frames["HelpToolbarFrame"].frames["LanguageFrame"].document).find("#lang").val() || "en";
+        }
+    };
+    
+    var getCurrentBook = function(){
+        var path = window.location.pathname.split("/");
+        return (path.length >= 2 ? path[1] : "NO-BOOK");
+    };
+    
+    var addJquery = function(callback){
+        if (typeof jQuery == 'undefined') {  
+            loadScript(('https:' == document.location.protocol ? 'https://' : 'http://') + 'code.jquery.com/jquery-1.9.1.min.js', callback);
+        }
+    };
+    
+    var addGoogleAnalytics = function(){
+        if (typeof _gat == 'undefined') {
+            _gaq.push(['_setAccount', 'UA-39590281-1']);
+            _gaq.push(['_setAllowLinker', true ]);
+            
+            var ga = document.createElement('script'); ga.type = 'text/javascript'; ga.async = true;
+            ga.src = ('https:' == document.location.protocol ? 'https://ssl' : 'http://www') + '.google-analytics.com/ga.js';
+            var s = document.getElementsByTagName('script')[0]; s.parentNode.insertBefore(ga, s);
+        }
+    };
+    
+    var init = function(){
+        // Load bookmarked page
+        if (window.location.hash.length > 0 && window.location.hash.indexOf("_utma") < 0){
+            window.location.href = "topic/" + decodeURI(window.location.hash.replace("#", ""));
+        }
+        
+        // When the whole document is fully loaded...
+        var readyStateCheckInterval = setInterval(function() {
+            if (document.readyState === "complete") {
+                clearInterval(readyStateCheckInterval);
+
+                var $ = jQuery;
+                var contentFrame = $(window.top.frames["HelpFrame"].frames["ContentFrame"].document);
+                var contentViewFrame = contentFrame.find("frame[name=ContentViewFrame]");
+
+                // #### PAGE UNIQUE URL GENERATION ####//
+                
+                var changeUrlForCurrentPage = function(){
+                    var contentViewFrameContent = $(window.top.frames["HelpFrame"].frames["ContentFrame"].frames["ContentViewFrame"].document);
+                    var path = contentViewFrameContent.get(0).location.href.split("/");
+                    
+                    var bookmark = encodeURI(path[path.length-2] + "/" + path[path.length-1]);
+                    if (window.history && window.history.pushState) { 
+                        window.history.pushState('', '', window.location.pathname + "#" + bookmark) 
+                    } else { 
+                        window.location.hash = bookmark;
+                    }
+                };
+
+                //#### PAGE LOAD AND DOWNLOADS TRACKING ####//
+                
+                var trackCurrentPage = function(){
+                    var contentViewFrameContent = $(window.top.frames["HelpFrame"].frames["ContentFrame"].frames["ContentViewFrame"].document);
+                    
+                    // Set the page title (it's a frameset... if not set it sends the parent title)
+                    _gaq.push(["_set", "title", contentViewFrameContent.find("title").text()]);
+                    
+                    var currentLang = getCurrentLanguage();
+                    var currentBook = getCurrentBook();
+                    var internalTraffic =  (isIntranet) ? 'true' : 'false';
+
+                    // GA custom variables
+                    _gaq.push(['_deleteCustomVar', 1]);
+                    _gaq.push(['_deleteCustomVar', 2]);
+                    _gaq.push(['_deleteCustomVar', 4]);
+                    _gaq.push(["_setCustomVar", 1, "language", currentLang, 3]);
+                    _gaq.push(["_setCustomVar", 2, "book", currentBook, 3]);
+                    _gaq.push(["_setCustomVar", 4, "internalTraffic", internalTraffic, 3]);
+                    
+                    _gaq.push(['_trackPageview', contentViewFrameContent.get(0).location.href]);
+                    //console.log("Page tracked: " + contentViewFrameContent.get(0).location.href);
+                    
+                    var downloads = contentViewFrameContent.find('a[href$=".pdf"], a[href$=".epub"], a[href$=".mobi"], a[href$=".zip"]');
+                    downloads.on("click", function(){
+                        
+                        var ext =  $(this).attr("href").substring($(this).attr("href").lastIndexOf(".") + 1);
+                        var downloadTitle;
+                        var parentEl = $(this).parent();
+                        var parentElTextEndIndex = parentEl.text().indexOf("[") - 1;
+                            if (parentEl.is("td") && parentElTextEndIndex >= 0){
+                                downloadTitle = parentEl.text().substring(0, parentElTextEndIndex);
+                            }
+                            else if ($(this).text().trim().length > 0){
+                                downloadTitle = $(this).text().trim();
+                            }
+                            else {
+                                downloadTitle = $(this).attr("href");
+                            }
+            
+                        _gaq.push(['_trackEvent', 'Download', ext.toUpperCase(), downloadTitle]);
+                        //console.log("Download tracked: " + downloadTitle + " [" + ext.toUpperCase() + "]");
+                    });
+                };
+                
+                //#### PAGE RATING ####//
+                
+                var addPageRating = function(){
+                    var contentViewFrameContent = $(window.top.frames["HelpFrame"].frames["ContentFrame"].frames["ContentViewFrame"].document);
+                    contentViewFrameContent.find("body").append('<div id="rating"></div>');
+                };
+                
+                contentViewFrame.off("load");
+                contentViewFrame.on("load", changeUrlForCurrentPage);
+                contentViewFrame.on("load", trackCurrentPage);
+                contentViewFrame.on("load", addPageRating);
+                trackCurrentPage();
+        
+                //#### LANGUAGE CHANGE TRACKING ####//
+                
+                // try to attach a listener for language change
+                try {
+                    var searchToolbarFrameContent = $(window.top.frames["HelpToolbarFrame"].frames["LanguageFrame"].document);
+                    var lang = searchToolbarFrameContent.find("#lang");
+                    lang.on("change", function(){
+                        var l = $(this).val();
+                        _gaq.push(['_trackEvent', 'Language', "Changed", l]);
+                        //console.log("Language change tracked: " + l);
+                    }); 
+                } 
+                catch(err) {} // else do nothing
+                
+                //#### TOOLBAR BUTTONS TRACKING ####//
+                
+                var toolbarBtns = $(window.top.frames["HelpFrame"].frames["ContentFrame"].frames["ContentToolbarFrame"].document).find("a");
+                toolbarBtns.on("click", function(){
+                    var parentId = $(this).parent("td").attr("id");
+                    if (parentId){
+                        var action = parentId.substring(parentId.indexOf("_") + 1);
+                        _gaq.push(['_trackEvent', 'Button', "Click", action]);
+                        //console.log("Toolbar button clicked: " + action);
+                    }
+                });
+                
+                //#### SEARCH TRACKING ####//
+                
+                var trackSearch = function(){
+
+                    var searchToolbarFrameContent = $(window.top.frames["HelpFrame"].frames["NavFrame"].frames["SearchFrame"].document);
+                    
+                    var keyword = searchToolbarFrameContent.find("#searchWord").val();
+                    _gaq.push(['_trackPageview', '/search?query='+keyword]);
+                    //console.log("Search: " + keyword);
+                }
+                
+                var trackSearchScopeChanged = function(){
+                    _gaq.push(['_trackEvent', 'Search', "ScopeChange"]);
+                    //console.log("Search Scope Changed");
+                }
+                
+                var searchKeypressHandler = function (e) {
+                    if (e.which == 13) {
+                        trackSearch();
+                    }
+                };
+
+                setInterval(function() {
+                    
+                    var searchToolbarFrameContent = $(window.top.frames["HelpFrame"].frames["NavFrame"].frames["SearchFrame"].document);
+
+                    // Validate if the event handlers have not been added yet
+                    if (!searchToolbarFrameContent.hasClass(trackingEnabledClass)){ 
+                        searchToolbarFrameContent.addClass(trackingEnabledClass);
+                        
+                        var searchInput = searchToolbarFrameContent.find("#searchWord");
+                        var searchScope = searchToolbarFrameContent.find("#b0");
+                     
+                        searchInput.off("keypress");
+                        searchInput.on("keypress", searchKeypressHandler);
+                        
+                        searchScope.off("click");
+                        searchScope.on("click", trackSearchScopeChanged);
+                    }
+
+                }, 2000);
+                
+                //#### INDEX TRACKING ####//
+                
+                var trackIndexSearch = function(){
+
+                    var title = $(this).attr("title");
+
+                    var indexFrameContent = $(window.top.frames["HelpFrame"].frames["NavFrame"].frames["ViewsFrame"].frames["index"].frames["indexViewFrame"].document);
+                    var indexInput = indexFrameContent.find("#typein");
+                    var indexKeyword = indexFrameContent.find("#typein").val();
+                    
+                    _gaq.push(["_trackEvent", "indexSearch", "Keyword", indexKeyword]);
+                    _gaq.push(["_trackEvent", "indexTermClick", "Title", title]);
+                    //console.log("IndexSearch: " + indexKeyword);
+                }
+                
+                setInterval(function() {
+
+                    var indexFrameHtml = $(window.top.frames["HelpFrame"].frames["NavFrame"].frames["ViewsFrame"].frames["index"].frames["indexViewFrame"].document).find("html");
+
+                    if (!indexFrameHtml.hasClass(trackingEnabledClass)){    
+                        indexFrameHtml.addClass(trackingEnabledClass);
+                        
+                        var links = indexFrameHtml.find("a").not("#previous").not("#next");
+
+                        links.off("click");
+                        links.on("click", trackIndexSearch);
+                    }
+                    
+                }, 2000);
+
+            }
+        }, 100);
+        
+                
+    };
+    
+    // When the DOM is ready
+    contentLoaded(window, function(){
+        loadScript(('/detection.jsp'), function(){
+            addGoogleAnalytics();
+            addJquery(init);
+        });
+    });
+    
+})();;,…5s$      VèÆ˙VèÆ˙;ˇÔœV¶H
+   :https://pubs.vmware.com/ga.js necko:classified 1 security-info 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 request-method GET response-head HTTP/1.1 200 OK
+Server: Apache-Coyote/1.1
+Accept-Ranges: bytes
+Etag: W/"13426-1423792861000"
+Last-Modified: Fri, 13 Feb 2015 02:01:01 GMT
+Content-Type: text/javascript
+Content-Length: 13426
+Date: Mon, 28 Dec 2015 07:13:36 GMT
+ uncompressed-len 0   4r

@@ -1,0 +1,275 @@
+/*******************************************************************************
+ * Copyright (c) 2006, 2010 IBM Corporation and others.
+ * All rights reserved. This program and the accompanying materials 
+ * are made available under the terms of the Eclipse Public License v1.0
+ * which accompanies this distribution, and is available at
+ * http://www.eclipse.org/legal/epl-v10.html
+ * 
+ * Contributors:
+ *     IBM Corporation - initial API and implementation
+ *******************************************************************************/
+
+// Functions to update the nodes of a dynamic tree based
+// on an XML dom. 
+
+var selectedNode;
+var highlightSelectedNode;
+
+function updateTree(xml) { 
+    var tocData = xml.documentElement;  
+    if (tocData.tagName != "tree_data") {
+        return;
+    }          
+    showErrors(xml);    
+    var treeRoot = document.getElementById("tree_root");
+    var nodes = tocData.childNodes;
+    selectedNode = null;
+    mergeChildren(treeRoot, nodes, 0);
+    if (selectedNode !== null) {
+        // Focusing on the last child will increase the chance that it is visible
+        if (!highlightSelectedNode) {
+            focusOnDeepestVisibleChild(selectedNode, false);
+        }
+        focusOnItem(selectedNode, highlightSelectedNode);
+    }
+ }
+ 
+ function showErrors(xml) {
+    var errorTags = xml.getElementsByTagName ("error");
+    
+    for (var i = 0; i < errorTags.length; i++) {
+         var nextError = errorTags[i];
+         var errorChildren = nextError.childNodes;
+         // Is the next node a text node
+         if (errorChildren.length > 0 && errorChildren[0].nodeType == 3) { 
+             var message = errorChildren[0].data;
+             alert(message);
+         }
+    }
+    return errorTags.length > 0;
+ }
+ 
+function mergeChildren(treeItem, nodes, level) {
+    var childContainer;
+    if (treeItem.id == "tree_root") {
+        childContainer=treeItem;
+    } else {
+        childContainer = findChild(treeItem, "DIV");
+    }
+    var childAdded = false;
+    var hasPlaceholder = childContainer !== null && childContainer.className == "unopened";
+    var existingChildren = hasExistingChildren(childContainer);
+    var childCount = 0;
+    var nodeIndex = 0;
+
+    // Compute total # of nodes for accessibility attributes
+    // nodes.length cannot be used because the list may contain xml elements
+    // which are not nodes
+        
+    for (var i = 0; i < nodes.length; i++) {
+        if (nodes[i].tagName == "node") {
+            childCount++;
+        }
+     }
+    if (nodes) {  
+        for (var i = 0; i < nodes.length; i++) {
+            var node = nodes[i];
+            // If the children of this node have already been evaluated
+            // and the child XML node has no children we can safely skip it 
+            if (node.tagName == "node" && (!existingChildren || node.childNodes.length > 0)) {
+                nodeIndex++;
+                if (hasPlaceholder) {
+                    // Remove the loading message
+                    treeItem.removeChild(childContainer);
+                    hasPlaceholder = false;
+                    childContainer = null;
+                }
+                if (childContainer === null) {
+                    childContainer = document.createElement("DIV");
+                    childContainer.className = "group";              
+                    setAccessibilityRole(childContainer, WAI_GROUP);
+                    treeItem.appendChild(childContainer);
+                }
+                var id = node.getAttribute("id");  
+                var childItem = null;
+                var isLeaf = node.getAttribute("is_leaf");
+                if (existingChildren) {
+                    childItem = findChildById(childContainer, id);
+                }
+                if (childItem === null) {                    
+                    var title = node.getAttribute("title");
+                    var href = node.getAttribute("href");
+                    var openImage = null;                
+                    var closedImage = null; 
+                    var imageAltText = "";
+                    /* Suite Solutions
+                    	14 April 2010
+                    	only show images for leafs
+                    */
+                    if (isLeaf) {
+                    if (node.getAttribute("openImage")) {
+                        openImage = "../topic" + node.getAttribute("openImage");
+                        imageAltText = node.getAttribute("imageAlt");
+                    } else {
+                        openImage = node.getAttribute("image");
+                        if (openImage) {
+                            imageAltText = getAltText(openImage);
+                            openImage = imagesDirectory + "/" + openImage + ".gif";
+                        }
+                    }              
+                    if (node.getAttribute("closedImage")) {
+                        closedImage = "../topic" + node.getAttribute("closedImage");
+                    }             
+                    } 
+                   childItem = addChild(childContainer, id, title, href, openImage, closedImage, imageAltText, isLeaf);     
+                }
+                else if (childCount > 1) {
+                 	//childContainer.appendChild(childItem);
+                 	if (childItem.class == "active") focusOnItem(childItem, true);
+                }
+               
+                childItem.setAttribute("path", node.getAttribute("path"));      
+              
+                if (!isLeaf) {            
+                    mergeChildren(childItem, node.childNodes);
+                } 
+                var isSelected = node.getAttribute("is_selected");                   
+                if (isSelected) {
+                    selectedNode = childItem;
+                    highlightSelectedNode = node.getAttribute("is_highlighted");
+                }
+                childAdded = true;
+            }
+        }   
+     }
+
+     if (childAdded) {
+         // Expand this node if it was collapsed and has children in the xml tree        
+        var childClass = getChildClass(treeItem);
+        if (childClass == "hidden") {
+            toggleExpandState(treeItem);
+        } else {
+            changeExpanderImage(treeItem, true); 
+            setWAIExpansionState(treeItem, true);
+        }
+     }  
+}
+
+function hasExistingChildren(container) {
+    var children = container.childNodes;
+    if (children !== null) {
+        for (var i = 0; i < children.length; i++) {
+            if (children[i].nodeid) {
+                return true;
+            }
+        }
+    }
+    return false;
+}
+
+function findChildById(treeItem, id) {
+    var children = treeItem.childNodes;
+    if (children !== null) {
+        for (var i = 0; i < children.length; i++) {
+            if (children[i].nodeid == id ) {
+                return children[i];
+            }
+        }
+    }
+    return null;
+}
+
+// Create a child of treeItem
+function addChild(treeItem, id, name, href, image, closedImage, imageAltText, 
+                  isLeaf, position, setsize, level) {        
+    var childItem = document.createElement("DIV");
+    // roots should have a className of "root" to prevent indentation
+    if (treeItem.id == "tree_root") {
+        childItem.className = "root";
+    } else {
+        childItem.className = "visible"; 
+    }
+    childItem.nodeid = id;
+    treeItem.appendChild(childItem);
+    
+    // Create a span to prevent line breaking
+    var container = document.createElement("SPAN");
+    container.className = "item";
+    childItem.appendChild(container);
+   
+    var topicImage;
+    if (image && isLeaf) {
+        topicImage = document.createElement("IMG");
+        //setImage(topicImage, image); 
+        if (closedImage) {          
+            topicImage.src = closedImage;
+            topicImage.openImage = image;
+            topicImage.closedImage = closedImage;
+        } else {
+            topicImage.src = image;
+        }
+        topicImage.alt = imageAltText;
+    } 
+    
+    var topicName=document.createTextNode(name);
+    
+  	// Suite Solutions
+  	// 22 Apr 2010
+  	// Leafs should not be indented
+  	
+    if (showExpanders && !isLeaf) {
+        var plusMinusImage= document.createElement("IMG");
+        plusMinusImage.className = "expander";
+        setImage(plusMinusImage, "plus");
+        if (isLeaf) {
+            plusMinusImage.className = "h";
+            plusMinusImage.alt = "";
+        }
+        container.appendChild(plusMinusImage);
+    }
+      
+    var anchor = document.createElement("a");
+    if (href === null) {
+        anchor.className = "nolink";
+    } else if (href.match(/^see:/)) {
+         childItem.see = href.substring(4);
+         anchor.className = "see";
+    } else {
+        anchor.href = href;
+    }
+    anchor.title = name;
+    setAccessibilityRole(anchor, WAI_TREEITEM);    
+    setAccessibilitySetsize(anchor, setsize); 
+    setAccessibilityPosition(anchor, position); 
+    setAccessibilityTreeLevel(anchor, level);
+    
+    if (topicImage) {
+        anchor.appendChild(topicImage);
+    }
+    anchor.appendChild(topicName);
+    container.appendChild(anchor);
+    
+    if (!isLeaf) {
+        var innerDiv = document.createElement("DIV");  
+        innerDiv.className = "unopened";
+        setWAIExpansionState(anchor, false);
+        childItem.appendChild(innerDiv);
+    }
+    return childItem;
+}
+
+function setLoadingMessage(treeItem, message) {   
+    var placeholderDiv = findChild(treeItem, "DIV");
+    if (placeholderDiv !== null && placeholderDiv.childNodes.length === 0) {      
+        var msg = document.createTextNode(message);
+        placeholderDiv.appendChild(msg);
+    }
+}
+Gm)–¸      V®ûV®û;ÿñŸV¼¾¢   C:https://pubs.vmware.com/workstation-9/advanced/helptreechildren.js necko:classified 1 security-info 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 request-method GET response-head HTTP/1.1 200 OK
+Server: Apache-Coyote/1.1
+Last-Modified: Tue, 26 Aug 2014 16:44:12 GMT
+Etag: W/"9624-1409071452000"
+Content-Type: text/javascript
+Content-Length: 9624
+Date: Mon, 28 Dec 2015 07:13:47 GMT
+ uncompressed-len 0   %˜

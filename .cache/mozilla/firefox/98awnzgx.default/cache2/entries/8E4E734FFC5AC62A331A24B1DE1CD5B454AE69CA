@@ -1,0 +1,364 @@
+/*******************************************************************************
+ * Copyright (c) 2005, 2010 Intel Corporation and others.
+ * All rights reserved. This program and the accompanying materials 
+ * are made available under the terms of the Eclipse Public License v1.0
+ * which accompanies this distribution, and is available at
+ * http://www.eclipse.org/legal/epl-v10.html
+ * 
+ * Contributors:
+ *     Intel Corporation - initial API and implementation
+ *     IBM Corporation 2006, refactored index view into a single frame
+ *     IBM Corporation 2007, allow partial loading of index
+ *     IBM Corporation 2010, add filtering in toc and index view
+ *******************************************************************************/
+ 
+var isMozilla = navigator.userAgent.indexOf("Mozilla") != -1 && parseInt(navigator.appVersion.substring(0,1)) >= 5;
+var isIE = navigator.userAgent.indexOf("MSIE") != -1;
+var showExpanders = false;
+var shown = false;
+var typeinPrevious = "";
+var typein;
+var lines = 30;
+var firstEntry;
+var lastEntry;
+var showAllChanged = false;
+var showAll;
+
+/**
+ * Set value of the typein input field.
+ * The value can be anchor's id or anchor's text.
+ */
+
+function sizeList() {
+    resizeVertical("indexList", "typeinTable", "navigation", 100, 5);
+}
+
+function computeLines() {
+    // Compute the number of lines available using the placeholder
+    try {
+        var indexList = document.getElementById("indexList");
+        var placeholder = document.getElementById("placeholder");
+        // Add 1 to placeholder height allow for margin
+	    var ratio = indexList.offsetHeight / ( placeholder.offsetHeight + 1);
+	    lines = Math.floor(ratio);
+	    if (lines < 1) {
+	        lines = 1;
+	    }
+	} catch(ex) {}
+}
+
+/*
+ * Called when the "DISPLAY" button is clicked
+ */
+function showIndex() {
+   loadChildren(typein.value);
+}
+
+function isVisible() 
+{
+    var visibility = parent.parent.getVisibility("index");
+    return visibility == "visible";
+}
+
+
+function onloadHandler() {
+
+    setRootAccessibility();
+	typein = document.getElementById("typein");
+
+	typein.value = "";
+	typeinPrevious = "";
+	
+	if (isIE) {
+		document.onclick = treeMouseClickHandler;
+		document.onkeydown = keyDownHandler;
+	} else {
+		document.addEventListener('click', treeMouseClickHandler, true);
+		document.addEventListener('keydown', keyDownHandler, true);
+	}
+		
+	setInterval("intervalHandler()", 200);
+	sizeList();
+	if (isVisible()) {
+	    onShow();
+	}
+}
+
+function setImage(imageNode, image) {
+    var imageFile = imagesDirectory + "/" + image + ".gif";
+    imageNode.src = imageFile;
+    if (image == "plus") {
+        imageNode.alt = altPlus;       
+    } else if (image == "minus") {
+        imageNode.alt = altMinus;     
+    } else if (image == "toc_open") {
+        imageNode.alt = altBookOpen;    
+    } else if (image == "toc_closed") {
+        imageNode.alt = altBookClosed;  
+    } else if (image == "container_obj") {
+        imageNode.alt = altContainer;  
+    } else if (image == "container_topic") {
+        imageNode.alt = altContainerTopic;  
+    } else if (image == "topic") {
+        imageNode.alt = altTopic;
+    } else {
+        imageNode.alt = "";
+    }
+}
+
+function updateImage(imageNode, isExpanded) {
+    var src = imageNode.src;
+    if (isExpanded) {   
+        if (src.match( /toc_closed.gif$/)) {
+            setImage(imageNode, "toc_open");
+        }
+    } else {
+        if (src.match( /toc_open.gif$/)) {           
+            setImage(imageNode, "toc_closed");
+        }
+    }
+}
+
+/*
+Remove any existing children and read new ones
+*/
+
+function loadChildren(startCharacters, mode, entry) { 
+    var parameters = "";
+    var treeRoot = document.getElementById("tree_root");
+    if (treeRoot !== null) {
+        while (treeRoot.childNodes.length > 0) {
+            treeRoot.removeChild(treeRoot.childNodes[0]);
+        }
+        var placeholder = document.createElement("DIV");
+        placeholder.className = "unopened";
+        placeholder.id = "placeholder";
+        treeRoot.appendChild(placeholder);
+        setLoadingMessage(treeRoot, loadingMessage);
+        computeLines();
+        var separator = "?";
+        if (startCharacters) {    
+            parameters += "?start=";
+            parameters += encodeURIComponent(startCharacters);
+            separator = "&";
+        }
+        if (lines) {
+            parameters += separator;
+            parameters += "size=";
+            parameters += lines;
+            separator = "&";
+        }
+        if (mode) {
+            parameters += separator;
+            parameters += "mode=";
+            parameters += mode;
+            separator = "&";
+        }
+        if (entry) {
+            parameters += separator;
+            parameters += "entry=";
+            parameters += entry;
+            separator = "&";
+        }
+        if (showAllChanged) {
+            showAllChanged = false;
+            parameters += separator;
+            parameters += "showAll="
+            if (showAll) {
+                parameters += "on";
+            } else {
+                parameters += "off";
+            }
+        }
+        makeNodeRequest(parameters);
+    }
+}
+
+function updateIndexTree(xml) {
+    updateTree(xml);
+    removePlaceholder();
+    // Enable or disable the buttons
+    var node = xml.documentElement;  
+    var previous = document.getElementById("previous");
+    var enablePrevious = node.getAttribute("enablePrevious");
+    if (enablePrevious == "false") {
+        previous.className = "h";
+    } else {
+        previous.className = "enabled";
+    }
+    var next = document.getElementById("next");
+    var enableNext = node.getAttribute("enableNext");
+    if (enableNext == "false") {
+        next.className = "h";
+    } else {
+        next.className = "enabled";
+    }
+}
+
+function removePlaceholder() {
+    var treeRoot = document.getElementById("tree_root");
+    if (treeRoot == null) return; 
+    var placeholderDiv = findChild(treeRoot, "DIV");
+    if (placeholderDiv && placeholderDiv.className == "unopened") {
+        treeRoot.removeChild(placeholderDiv);
+    }
+}
+
+function makeNodeRequest(parameters) {
+    var href = "indexfragment" + parameters;
+    var callback = function(xml) { updateIndexTree(xml);}; 
+    var errorCallback = function() { 
+        // alert("ajax error"); 
+    };
+    ajaxRequest(href, callback, errorCallback);
+}
+
+// Cache the first and last so that if a request fails we don't lose our place
+function getFirstAndLast() {
+    var treeRoot = document.getElementById("tree_root");
+    if (treeRoot == null) return; 
+    var firstDiv = findChild(treeRoot, "DIV");
+    if (firstDiv && firstDiv.nodeid) {
+        firstEntry = firstDiv.nodeid.substring(1);
+    }
+    var lastDiv = findLastChild(treeRoot, "DIV");
+        
+    if (lastDiv && lastDiv.nodeid) {
+        lastEntry = lastDiv.nodeid.substring(1);
+    }
+}
+
+function loadPreviousPage() {
+    getFirstAndLast();
+    if (firstEntry) {
+        loadChildren("", "previous", firstEntry);
+    } else {
+        loadChildren("");
+    }
+}
+       
+function loadNextPage() {
+    getFirstAndLast();
+    if (lastEntry) {
+        loadChildren("", "next", lastEntry);
+    } else {
+        loadChildren("");
+    }
+}
+       
+function loadCurrentPage() {
+    getFirstAndLast();
+    if (firstEntry && firstEntry > 0) {
+        loadChildren("", "next", firstEntry - 1);
+    } else {
+        loadChildren("");
+    }
+}
+       
+function onShow() { 
+	sizeList();
+    if (!shown) {
+        // View is being shown for the first time
+        loadChildren("");
+        shown = true;
+    }  
+}
+
+function setShowAll(isShowAll) {
+    showAll = isShowAll;
+    showAllChanged = true;
+    if (shown) {
+        // Only refresh if we are already showing       
+        loadCurrentPage();
+    }
+}
+
+/*
+ * Function called when the typein value may have changed
+ */
+ 
+function typeinChanged() {
+
+    if (typein.value == typeinPrevious) {
+        return;
+    }
+    typeinPrevious = typein.value;
+    loadChildren(typeinPrevious);
+}
+
+/*
+ * Handler for key down 
+ */
+function keyDownHandler(e)
+{
+    var key = getKeycode(e);
+    
+    //alert(key);
+    
+    if (key == 33) {
+        // Page up  
+        cancelEventBubble(e);
+        loadPreviousPage(); 
+        return;
+    }
+    if (key == 34) {
+        // Page down 
+        cancelEventBubble(e);
+        loadNextPage(); 
+        return; 
+    }
+	var clickedNode = getEventTarget(e);
+	if (clickedNode && clickedNode.id == "typein") {
+	    typeinKeyDownHandler(e);
+	} else {
+	    treeKeyDownHandler(e);
+	}
+}
+
+function typeinKeyDownHandler(e) {
+	var key = getKeycode(e);	
+	
+	// Suite Solutions 
+	// 11 Dec 2011
+	// Allow left/right arrows in typein box
+	
+	if (key == 37 || key == 39) {
+		return true;
+	}
+	else if (key == 13) { // enter
+	    typeinChanged();
+	    cancelEventBubble(e);
+	} else {
+	    return treeKeyDownHandler(e);
+	}
+
+	return false;
+}
+
+function handleSee(target) {
+    var pathSegments = target.split(", ");
+    typeinPrevious = null;
+    typein.value = pathSegments[0];
+    typeinChanged();
+}
+
+function repaint() {
+    var href = "indexView.jsp";
+    location.replace(href);
+}
+
+/**
+  * Select the corresponding item in the index list on typein value change.
+  * Check is performed periodically in short interval.
+  */
+function intervalHandler() {
+    typeinChanged();
+}
+©yÏ"8[      VèÆ˚VèÆ˚;ˇÔ–Vºæ¢   <:https://pubs.vmware.com/workstation-9/advanced/indexView.js necko:classified 1 security-info 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 request-method GET response-head HTTP/1.1 200 OK
+Server: Apache-Coyote/1.1
+Last-Modified: Tue, 26 Aug 2014 16:44:12 GMT
+Etag: W/"9267-1409071452000"
+Content-Type: text/javascript
+Content-Length: 9267
+Date: Mon, 28 Dec 2015 07:13:47 GMT
+ uncompressed-len 0   $3

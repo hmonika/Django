@@ -1,0 +1,501 @@
+/*******************************************************************************
+ * Copyright (c) 2006, 2010 IBM Corporation and others.
+ * All rights reserved. This program and the accompanying materials 
+ * are made available under the terms of the Eclipse Public License v1.0
+ * which accompanies this distribution, and is available at
+ * http://www.eclipse.org/legal/epl-v10.html
+ * 
+ * Contributors:
+ *     IBM Corporation - initial API and implementation
+ *******************************************************************************/
+
+// Tree code specific to the help toc
+
+var showExpanders = true;
+var ajaxPath = "tocfragment"; 
+var pendingSynchTopic = null; // Should the toc be synchronized when the view becomes visible
+
+// The default value of ajaxPath works from jsp files but needs to be overridden to 
+// a non relative path to work from scripts launched from any page
+
+function setAjaxPrefix(prefix) {
+    ajaxPath = prefix + "/tocfragment";
+}
+
+/*
+ * Returns the currently selected topic's href, or null if no
+ * topic is selected.
+ */
+function getSelectedTopic() {
+	var node = getActiveAnchor();
+	if (node != null) {
+		var href = node.href;
+		var index = href.indexOf("/topic/");
+		if (index != -1) {
+			return href.substring(index + 6);
+		}
+		index = href.indexOf("/nav/");
+		if (index != -1) {
+			return "/.." + href.substring(index);
+		}
+	}
+	// no selection
+	return null;
+}
+
+function isVisible() 
+{
+    var visibility = parent.parent.getVisibility("toc");
+    return visibility == "visible";
+}
+
+function selectTopic(topic, isAutosynch)
+{
+    if (isAutosynch && !isVisible()) {
+        pendingSynchTopic = topic;
+        return;
+    }
+
+	// 23 Mar 2014
+    // Suite Solutions
+    // toc needs to be loaded before selecting a child
+    // if toc has not yet been loaded then just return
+    var treeRoot = document.getElementById("tree_root");
+	var childCount = 0;
+    for (var i = 0; i < treeRoot.childNodes.length; i++) {
+    	if (treeRoot.childNodes[i].tagName == "DIV") {
+    		childCount++;
+    	}
+     }
+    if (childCount == 0) {
+    	// save the current topic to be synced later 
+        pendingSynchTopic = topic;
+        return;
+    }
+  
+    // Is the highlighted node the same as the href? In that case no need to call the server.
+    if (oldActive && sameTopic(topic, stripParams(oldActive.href))) {
+           focusOnItem(getTreeItem(oldActive), true);
+           return;
+    }
+    pendingSynchTopic = null;
+    var indexAnchor=topic.indexOf('#');
+	var parameters;			
+	if (indexAnchor!=-1) {
+		var anchor=topic.substr(indexAnchor+1);
+		topic=topic.substr(0,indexAnchor);
+		parameters = "?topic="+topic+"&anchor="+anchor;	
+	} else {
+		parameters = "?topic="+topic;
+	}
+	if (isAutosynch) {
+	    parameters += "&errorSuppress=true";
+	}
+		
+	makeShowInTocRequest(parameters);	
+    return true;
+}
+
+function stripParams(href) {
+    var qMark = href.indexOf('?');
+    if (qMark < 0) {
+        return href;
+    }
+    return href.substring(0, qMark);
+}
+
+function sameTopic(topicHref, oldActiveHref) {
+    if (topicHref == oldActiveHref) {
+        return 1;
+    }
+    // Sometimes the oldActiveHref will start with '../', compare everything from /help on
+    if (oldActiveHref.indexOf('../') == 0) {
+        var fixedOldActive = oldActiveHref.substring(2);
+        var result = topicHref.indexOf(fixedOldActive) >= 0;
+        return result;
+    }
+    return 0;
+    
+}
+
+function collapseAll() {
+    window.location.replace("tocView.jsp?collapse=true");
+    return true;
+}
+
+function setShowAll(isShowAll, href) {
+    var showAllParam = isShowAll ? "on" : "off";
+    window.location.replace("tocView.jsp?showAll=" + showAllParam);
+}
+
+function setImage(imageNode, image) {
+    var imageFile = imagesDirectory + "/" + image + ".gif";
+    imageNode.src = imageFile;
+    imageNode.alt = getAltText(image);
+}
+
+function getAltText(image) {
+    if (image == "plus") {
+        return altPlus;       
+    } else if (image == "minus") {
+        return altMinus;     
+    } else if (image == "toc_open") {
+        return altBookOpen;    
+    } else if (image == "toc_closed") {
+        return altBookClosed;  
+    } else if (image == "container_obj") {
+        return altContainer;  
+    } else if (image == "container_topic") {
+        return altContainerTopic;  
+    } else if (image == "topic") {
+        return altTopic;
+    } else {
+        return "";
+    }
+}
+
+function updateImage(imageNode, isExpanded) {
+    var src = imageNode.src;
+    if (isExpanded) {  
+        if (imageNode.openImage) { 
+            imageNode.src = imageNode.openImage;
+        } else if (src.match( /toc_closed.gif$/)) {
+            setImage(imageNode, "toc_open");
+        }
+    } else {       
+        if (imageNode.closedImage) {    
+            imageNode.src = imageNode.closedImage;
+        } else if (src.match( /toc_open.gif$/)) {           
+            setImage(imageNode, "toc_closed");
+        }
+    } 
+}
+
+function loadChildren(treeItem) { 
+    var parameters = "";
+    if (treeItem !== null  && treeItem.nodeid !== null) {
+        setLoadingMessage(treeItem, loadingMessage);
+        var topAncestor = getTopAncestor(treeItem);
+        parameters += "?toc=";
+        parameters += topAncestor.nodeid;
+        if (topAncestor !== treeItem) {
+            parameters += "&path=";
+            parameters += treeItem.nodeid;
+        }
+    }
+    makeNodeRequest(parameters);
+}
+
+function updateTocTree(xml) {
+    updateTree(xml);
+   
+    // Suite Solutions
+    // 24 Mar 2014
+    // does this select the sync topic of csh calls?
+    if ( isAutosynchEnabled() && pendingSynchTopic !== null ) {
+    	selectTopic(pendingSynchTopic, true);
+    }
+                  
+}
+
+function makeNodeRequest(parameters) {
+    var href;
+    href = ajaxPath +parameters; 
+    var callback = function(xml) { updateTocTree(xml);}; 
+    var errorCallback = function() { 
+        // alert("ajax error"); 
+    };
+    ajaxRequest(href, callback, errorCallback);
+}
+
+function makeShowInTocRequest(parameters) {
+    var href;
+    href = ajaxPath +parameters; 
+    var callback = function(xml) { showInToc(xml);}; 
+    var errorCallback = function() { 
+        // alert("ajax error"); 
+    };
+    ajaxRequest(href, callback, errorCallback);
+}
+
+function showInToc(xml) { 
+    var tocData = xml.documentElement;  
+    if (tocData.tagName != "tree_data") {
+        return;
+    }  
+    if (showErrors(xml)) {
+        return;
+    }
+    
+    var errorTags = xml.getElementsByTagName ("error");   
+    var treeRoot = document.getElementById("tree_root");
+    var nodes = tocData.childNodes;
+    for (var i = 0; i < nodes.length; i++) {
+        var node = nodes[i];
+        if (node.tagName == "numeric_path") {
+            var selectedChild = findChild(treeRoot, "DIV");
+            var path = node.getAttribute("path");
+            var isShowing = openPath(selectedChild, path);
+            if (!isShowing) {
+                makeNodeRequest("?expandPath=" + path + "&errorSuppress=true");
+            }
+            return;
+         }  
+     }
+}
+
+/* 
+	Suite Solutions
+	Dec 28, 2008
+	Prev/Next buttons should loop through tree
+*/
+function makeGetNextPageRequest(parameters1) {
+    var href;
+    var topic = parameters1;
+   
+    var indexAnchor=topic.indexOf('#');
+	var parameters = "";			
+	if (indexAnchor!=-1) {
+		var anchor=topic.substr(indexAnchor+1);
+		topic=topic.substr(0,indexAnchor);
+		parameters += "?topic="+topic+"&anchor="+anchor;	
+	} else {
+		parameters += "?topic="+topic;
+	}
+	
+	if (ajaxPath) {
+        href = ajaxPath + "/tocfragment" +parameters; 
+    } else {
+        href = "../tocfragment" + parameters;
+    }
+       
+    var callback = function(xml) { getNextPage(xml);}; 
+    var errorCallback = function() { 
+         alert("ajax error"); 
+    };
+    
+    ajaxRequest(href, callback, errorCallback);
+}
+
+function makeGetPrevPageRequest(parameters1) {
+    var href;
+    var topic = parameters1;
+    
+    var indexAnchor=topic.indexOf('#');
+	var parameters = "";
+	// Suite Solutions
+	// 26 May 2010
+	// Remove errorSuppress=true from call so that we get an error message if doesn't exist in toc 			
+	if (indexAnchor!=-1) {
+		var anchor=topic.substr(indexAnchor+1);
+		topic=topic.substr(0,indexAnchor);
+		parameters += "?topic="+topic+"&anchor="+anchor; //errorSuppress=true&	
+	} else {
+		parameters += "?topic="+topic; //errorSuppress=true&
+	}
+	
+	if (ajaxPath) {
+        href = ajaxPath + "/tocfragment" +parameters; 
+    } else {
+        href = "../tocfragment" + parameters;
+    }
+    
+    var callback = function(xml) { getPrevPage(xml);}; 
+    var errorCallback = function() { 
+         alert("ajax error"); 
+    };
+    
+    ajaxRequest(href, callback, errorCallback);
+}
+
+function makeShowNextPrevPageRequest(parameters) {
+    var href;
+   
+    if (ajaxPath) {
+        href = ajaxPath + "/tocfragment" +parameters; 
+    } else {
+        href = "../tocfragment" + parameters;
+    }
+    
+    var callback = function(xml) { showNextPrevPage(xml);}; 
+    var errorCallback = function() { 
+         alert("ajax error"); 
+    };
+    
+    
+    ajaxRequest(href, callback, errorCallback);
+}
+
+function getNextPage(xml) {  
+ 
+	var tocData = xml.documentElement;  
+    if (tocData.tagName != "tree_data") {
+        return;
+    }  
+    if (showErrors(xml)) {
+        // show the first toc
+        //parent.parent.parent.parent.ContentFrame.ContentViewFrame.window.location.href = "/help/nav/0";
+        return;
+    }
+     
+    var errorTags = xml.getElementsByTagName ("error");   
+    var treeRoot = document.getElementById("tree_root");
+    
+    var nodes = tocData.childNodes;
+    for (var i = 0; i < nodes.length; i++) {
+        var node = nodes[i];
+        if (node.tagName == "numeric_path") {
+            var selectedChild = findChild(treeRoot, "DIV");
+            var path = node.getAttribute("path");
+			makeShowNextPrevPageRequest("?expandPath=" + path + "&errorSuppress=true&navButton=next");
+            return;
+         }  
+     }  
+}
+
+function getPrevPage(xml) { 
+    
+    var tocData = xml.documentElement;  
+    if (tocData.tagName != "tree_data") {
+        return;
+    }  
+    if (showErrors(xml)) {
+        // show the first toc
+        //parent.parent.parent.parent.ContentFrame.ContentViewFrame.window.location.href = "/help/nav/0";
+        return;
+    }
+     
+    var errorTags = xml.getElementsByTagName ("error");   
+    var treeRoot = document.getElementById("tree_root");
+     
+    var nodes = tocData.childNodes;
+    
+    for (var i = 0; i < nodes.length; i++) {
+        var node = nodes[i];
+        if (node.tagName == "numeric_path") {
+            var selectedChild = findChild(treeRoot, "DIV");
+            var path = node.getAttribute("path");
+			makeShowNextPrevPageRequest("?expandPath=" + path + "&errorSuppress=true&navButton=prev");
+            return;
+         }  
+     }  
+}
+
+function showNextPrevPage(xml) { 
+
+    var tocData = xml.documentElement;  
+    if (tocData.tagName != "tree_data") {
+        return;
+    }  
+    //if (showErrors(xml)) {
+    //    return;
+    //}
+    
+    //var errorTags = xml.getElementsByTagName ("error");   
+    //var treeRoot = document.getElementById("tree_root");
+    
+    var href = xml.getElementsByTagName("href");
+   
+    if (href.length > 0)
+    {
+        var path = href[0].getAttribute("path");
+    	if (path == null)
+		{		
+			path = "";
+			try {
+				path = href[0].childNodes[0].nodeValue;
+			}
+			catch (ex) {
+			}
+		}
+    	
+    	if (path != "") {
+    		parent.parent.parent.parent.ContentFrame.ContentViewFrame.window.location.href = path;
+    	}
+    } 
+}
+
+/* end addition */
+
+function openPath(containerNode, path) {
+     if (!containerNode) {
+         return false;
+     }
+     var index = path.indexOf("_");
+     var segment;
+     if (index == -1) { 
+         segment = path;
+     } else {
+         segment = path.substr(0, index);
+     }
+     for (var i = 0; i < segment; i++) {
+         containerNode = containerNode.nextSibling;
+         if (!containerNode) {
+             return false;
+         }
+     }
+     if (index == -1) {
+         focusOnItem(containerNode, true);
+         return true;
+     } else {
+         return openPath(findChild(findChild(containerNode, "DIV"), "DIV"), path.substr(index + 1));
+     }
+ }
+
+
+function isAutosynchEnabled() {
+	// Suite Solutions
+	// 2 Feb 2010
+	// always auto sync toc 
+	return true;
+	//var value = getCookie("synchToc");
+	//return value ? value == "true" : false;
+}
+
+function setAutosynchEnabled(value) {
+	setCookie("synchToc", value);
+	var newValue = isAutosynchEnabled();
+	parent.tocToolbarFrame.setButtonState("synchnav", newValue);
+	if (value != newValue) {
+	    alert(cookiesRequired);
+	}  
+}
+
+function toggleAutosynch() {
+    setAutosynchEnabled(!isAutosynchEnabled());  
+}
+
+function repaint() {
+    var selected = getSelectedTopic();
+    var href = "tocView.jsp";
+    if (selected) {
+        href += '?topic=';
+        href += selected;
+    } 
+    location.replace(href);
+}
+
+function onShow() { 
+    if ( isAutosynchEnabled() && pendingSynchTopic !== null ) {
+        selectTopic(pendingSynchTopic, true);
+    } 
+}
+
+if (isInternetExplorer){
+   document.onclick = treeMouseClickHandler;
+   document.ondblclick = treeMouseDblClickHandler;
+   document.onkeydown = treeKeyDownHandler;
+} else {
+   document.addEventListener('click', treeMouseClickHandler, true);
+   document.addEventListener('dblclick', treeMouseDblClickHandler, true); 
+   //document.ondblclick = treeMouseDblClickHandler;
+   document.addEventListener('keydown', treeKeyDownHandler, true);
+}
+‘^å³Ð~      V®ûV®û;ÿïÐV¼¾¢   ::https://pubs.vmware.com/workstation-9/advanced/tocTree.js necko:classified 1 security-info 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 request-method GET response-head HTTP/1.1 200 OK
+Server: Apache-Coyote/1.1
+Last-Modified: Tue, 26 Aug 2014 16:44:14 GMT
+Etag: W/"13458-1409071454000"
+Content-Type: text/javascript
+Content-Length: 13458
+Date: Mon, 28 Dec 2015 07:13:48 GMT
+ uncompressed-len 0   4’

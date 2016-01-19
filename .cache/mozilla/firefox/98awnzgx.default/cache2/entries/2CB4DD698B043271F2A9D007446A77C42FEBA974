@@ -1,0 +1,384 @@
+/*******************************************************************************
+ * Copyright (c) 2000, 2007 IBM Corporation and others.
+ * All rights reserved. This program and the accompanying materials 
+ * are made available under the terms of the Eclipse Public License v1.0
+ * which accompanies this distribution, and is available at
+ * http://www.eclipse.org/legal/epl-v10.html
+ * 
+ * Contributors:
+ *     IBM Corporation - initial API and implementation
+ *******************************************************************************/
+ 
+var isMozilla = navigator.userAgent.indexOf('Mozilla') != -1 && parseInt(navigator.appVersion.substring(0,1)) >= 5;
+var isIE = navigator.userAgent.indexOf('MSIE') != -1;
+
+var navVisible = true;
+	
+function goBack(button, param) {
+	/*parent.history.back();
+	
+	if (button && document.getElementById(button)){
+		document.getElementById(button).blur();
+	}
+	*/
+	
+	/* 
+	    Suite Solutions
+		Dec 28, 2008
+		Change behavior of back button, should loop through tree 
+	*/
+	var parameters = "";
+	
+	parameters += getCurrentTopic();
+        
+    parent.parent.NavFrame.ViewsFrame.toc.tocViewFrame.makeGetPrevPageRequest(parameters);
+    
+}
+
+function goForward(button, param) {
+	/*parent.history.forward();
+	
+	if (button && document.getElementById(button)){
+		document.getElementById(button).blur();
+	}*/
+	
+	/* 
+	    Suite Solutions
+		Dec 28, 2008
+		Change behavior of forward button, should loop through tree 
+	*/
+	
+	var parameters = "";
+	
+	parameters += getCurrentTopic();
+       
+    parent.parent.NavFrame.ViewsFrame.toc.tocViewFrame.makeGetNextPageRequest(parameters);
+   
+}
+
+function goHome(button, param) {
+	var isHome = false;
+
+	try {
+		// first check if we're already at home
+		var str = param;
+		var index = str.indexOf("/");
+		if (index > 0) {
+			str = str.substring(index);
+		}
+		var locationStr = parent.ContentViewFrame.location.href;
+		isHome = (locationStr.substring(locationStr.length - str.length) == str)
+	}
+	catch (e) {
+		// insufficient permission, not home
+	}
+	
+	if (!isHome) {
+		parent.ContentViewFrame.location = param;
+	}
+	parent.parent.NavFrame.collapseToc();
+	if (button && document.getElementById(button)){
+		document.getElementById(button).blur();
+	}
+}
+
+function bookmarkPage(button, param)
+{
+	// Currently we pick up the url from the content page.
+	// If the page is from outside the help domain, a script
+	// exception is thrown. We need to catch it and ignore it.
+	try
+	{
+		// use the url from plugin id only
+		var url = parent.ContentViewFrame.location.href;
+		var i = url.indexOf("/topic/");
+		if (i >=0 )
+			url = url.substring(i+6);
+		// remove any query string
+		i = url.indexOf("?");
+		if (i >= 0)
+			url = url.substring(0, i);
+			
+		var title = parent.ContentViewFrame.document.title;
+		if (title == null || title == "")
+			title = url;
+
+		/********** HARD CODED VIEW NAME *************/
+		parent.parent.NavFrame.ViewsFrame.bookmarks.bookmarksViewFrame.location.replace("bookmarksView.jsp?operation=add&bookmark="+encodeURIComponent(url)+"&title="+encodeURIComponent(title));
+	}catch (e) {}
+	if (button && document.getElementById(button)){
+		document.getElementById(button).blur();
+	}
+}
+
+function bookmarkInfocenterPage(button, param)
+{
+	// Currently we pick up the url from the content page.
+	// If the page is from outside the help domain, a script
+	// exception is thrown. We need to catch it and ignore it.
+	try
+	{
+		// use the url from plugin id only
+		var url = parent.ContentViewFrame.location.href;
+		var i = url.indexOf("/topic/");
+		if (i >=0 )
+			url = url.substring(i+6);
+		// remove any query string
+		i = url.indexOf("?");
+		if (i >= 0)
+			url = url.substring(0, i);
+			
+		var title = parent.ContentViewFrame.document.title;
+		if (title == null || title == "")
+			title = url;
+
+		/********** HARD CODED VIEW NAME *************/
+		
+		// Suite Solutions
+		// 31 Mar 2009
+		// added bookmark functionality for FireFox
+		
+		if (window.sidebar) { // Mozilla Firefox Bookmark
+		       window.sidebar.addPanel(title, parent.ContentViewFrame.location.href, true);	
+		} 
+		
+		else if (window.external) { // IE Favorite
+			version = parseFloat(navigator.appVersion.split("MSIE")[1]);
+			
+			//if (version < 8)
+			//{
+				window.external.AddFavorite(parent.ContentViewFrame.location.href,title);
+			//	}
+			//else
+			//	window.external.AddToFavoritesBar(parent.ContentViewFrame.location.href,title,"slice");
+		}
+		// end change		
+		//window.external.AddFavorite(parent.ContentViewFrame.location.href,title);
+		
+	}catch (e) {}
+	if (button && document.getElementById(button)){
+		document.getElementById(button).blur();
+	}
+}
+
+/* Suite Solution
+  Dec 29, 2009
+  added function to print topic and sub topics from content toolbar
+*/
+
+function printTopic(errorMsg) {
+	try {
+		parent.ContentViewFrame.focus();
+		parent.ContentViewFrame.print();
+	} catch(e) {}	
+}
+
+function  printToc(errorMsg) {
+	var topic = getSelectedTopic();
+	
+	var printjsp = window.location.href;
+	
+	var pos0 = printjsp.lastIndexOf("?");
+    if (pos0 != -1) {
+        printjsp = printjsp.substring(0,pos0);
+    }
+        
+	var pos1 = printjsp.lastIndexOf("/");
+	printjsp = printjsp.substring(0,pos1) + "/print.jsp";
+	
+	if (topic && topic != ":blank") {
+		var contentRect = getWindowBounds(parent.ContentViewFrame.window);
+		var topRect = getWindowBounds(parent.parent);
+		var w = contentRect.width;
+		var h = topRect.height;
+		var x = topRect.x + (topRect.width - w)/2;
+		var y = topRect.y;
+		var indexAnchor=topic.indexOf('#');
+	    var parameters;			
+	    if (indexAnchor!=-1) {
+		    var anchor=topic.substr(indexAnchor+1);
+		    topic=topic.substr(0,indexAnchor);
+		    parameters = "?topic="+topic+"&anchor="+anchor;	
+	     } else {
+		    parameters = "?topic="+topic;
+	     }
+		var printWindow = window.open(printjsp + parameters, "printWindow", "directories=yes,location=no,menubar=yes,resizable=yes,scrollbars=yes,status=yes,titlebar=yes,toolbar=yes,width=" + w + ",height=" + h + ",left=" + x + ",top=" + y);
+	}
+	else {
+		alert(errorMsg);
+	}
+}
+function getWindowBounds(window) {
+	var rect = new Object();
+	if (window.screenLeft) {
+		rect.x = window.screenLeft;
+		rect.y = window.screenTop;
+	}
+	else {
+		rect.x = window.screenX;
+		rect.y = window.screenY;
+	}
+
+	if (window.innerWidth) {
+		rect.width = window.innerWidth;
+		rect.height = window.innerHeight;
+	}
+	else {
+		rect.width = window.document.body.clientWidth;
+		rect.height = window.document.body.clientHeight;
+	}
+	return rect;
+}
+
+function getSelectedTopic() {
+	var href = getCurrentTopic(); 
+	var index = href.indexOf("/topic/");
+	if (index != -1) {
+		return href.substring(index + 6);
+	}
+	index = href.indexOf("/nav/");
+	if (index != -1) {
+		return "/.." + href.substring(index);
+	}	
+	// no selection
+	return null;
+}
+
+/* end addition */
+
+
+/* Suite Solution
+   Dec 29, 2009
+   added function to get title of currentTopic
+*/
+
+function getCurrentTitle () {
+	var title = parent.ContentViewFrame.document.title;
+	return title;
+}
+/* Suite Solution
+   Feb 18, 2010
+   added function to get product/version of currentTopic
+   Aug 22, 2010
+   Change format to match Applehelp 
+*/
+function getCurrentProduct () {
+	var title = "";   
+
+	try {
+		if (parent.ContentViewFrame.product!=undefined)
+			title = parent.ContentViewFrame.product;
+	}
+	catch (ex)
+	{
+	}
+	/*try {
+		if (parent.ContentViewFrame.vrm!=undefined)
+			title = title + " Version: " + parent.ContentViewFrame.vrm;
+	}
+	catch (ex2)
+	{
+	}*/
+	
+	
+	
+	/*if (title.charAt(title.length-1)==(","))
+    {
+        title = title.substring(0,title.length-1);
+    }*/
+	return title;
+}
+
+function getCurrentTopic() {
+    var topic = parent.ContentViewFrame.window.location.href;
+	// remove the query, if any
+	var i = topic.indexOf('?');
+	if (i != -1) {
+		topic = topic.substring(0, i);
+	}
+	return topic;
+}
+
+function resynch(button, param)
+{
+	try {
+		parent.parent.NavFrame.displayTocFor(getCurrentTopic(), false);
+	} catch(e) {}
+	if (button && document.getElementById(button)){
+		document.getElementById(button).blur();
+	}
+}
+
+// Synchronize after a hyperlink is selected
+
+function autosynch() {
+    try {
+		parent.parent.NavFrame.displayTocFor(getCurrentTopic(), true);
+	} catch(e) {}
+}
+
+function toggleHighlight(button, param)
+{
+	try {
+		parent.ContentViewFrame.toggleHighlight();
+		var highlight = parent.ContentViewFrame.currentHighlight;
+		window.setButtonState("toggle_highlight",highlight);
+				
+		var date = new Date();
+		date.setTime(date.getTime()+(365*24*60*60*1000));
+		document.cookie = document.cookie = "highlight="+highlight+"; expires="+date.toGMTString() + ";path=/";;
+		
+	} catch(e) {}
+	if (button && document.getElementById(button)){
+		document.getElementById(button).blur();
+	}
+}
+
+function printContent(button, param)
+{
+	try {
+		parent.ContentViewFrame.focus();
+		parent.ContentViewFrame.print();
+	} catch(e) {}
+	if (button && document.getElementById(button)){
+		document.getElementById(button).blur();
+	}
+}
+
+function goPage(button, param)
+{
+	parent.ContentViewFrame.location = param;	
+}
+/* Suite Solutions 
+12 Aug 2010
+Removed Share code and Copy URL code 
+*/
+/*
+	Suite Solutions 
+	Dec 28, 2008
+	add "send feedback" button
+	Aug 22, 2010
+	Change format to match applehelp (product and version first)
+	July 31, 2011
+	moved button to content toolbar from toc toolbar
+*/
+function mailto(button, param) {
+	var ctf = this;
+	var t = ctf.getCurrentProduct();
+
+// Suite Solutions
+// 4 Nov 2010
+// Add the word Topic: to subject
+// 13 Nov 2012
+// mailto address should come from plugin_customization.ini
+	window.location = "mailto:" + param + "?subject=Topic: " + ctf.getCurrentTopic() + " " + t; 						
+} 
+/* end addition */
+«“Ê‡<Ñ      V®úV®û;ÿïÏV¼¾›   A:https://pubs.vmware.com/workstation-9/advanced/contentActions.js necko:classified 1 security-info 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 request-method GET response-head HTTP/1.1 200 OK
+Server: Apache-Coyote/1.1
+Last-Modified: Tue, 26 Aug 2014 16:44:12 GMT
+Etag: W/"9572-1409071452000"
+Content-Type: text/javascript
+Content-Length: 9572
+Date: Mon, 28 Dec 2015 07:13:41 GMT
+ uncompressed-len 0   %d

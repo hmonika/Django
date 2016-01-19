@@ -1,0 +1,20 @@
+logrotate state -- version 2
+"/home/monika/.cache/upstart/unity7.log" 2016-1-18-12:19:31
+"/home/monika/.cache/upstart/gnome-session-Unity.log" 2016-1-18-12:19:31
+"/home/monika/.cache/upstart/gnome-keyring-gpg.log" 2016-1-18-12:19:31
+"/home/monika/.cache/upstart/indicator-sound.log" 2016-1-18-12:19:31
+"/home/monika/.cache/upstart/window-stack-bridge.log" 2016-1-18-12:19:31
+"/home/monika/.cache/upstart/indicator-printers.log" 2016-1-18-12:19:31
+"/home/monika/.cache/upstart/dbus.log" 2016-1-18-12:19:31
+"/home/monika/.cache/upstart/im-config.log" 2016-1-18-12:19:31
+"/home/monika/.cache/upstart/hud.log" 2016-1-18-12:19:31
+"/home/monika/.cache/upstart/gnome-keyring-ssh.log" 2016-1-18-12:19:31
+"/home/monika/.cache/upstart/indicator-bluetooth.log" 2016-1-18-12:19:31
+"/home/monika/.cache/upstart/update-notifier-release.log" 2016-1-18-12:19:31
+"/home/monika/.cache/upstart/unity-panel-service.log" 2016-1-18-12:19:31
+"/home/monika/.cache/upstart/unity-settings-daemon.log" 2016-1-18-12:19:31
+"/home/monika/.cache/upstart/unity-panel-service-lockscreen.log" 2016-1-18-12:0:0
+"/home/monika/.cache/upstart/ssh-agent.log" 2016-1-18-12:19:31
+"/home/monika/.cache/upstart/indicator-power.log" 2016-1-18-12:19:31
+"/home/monika/.cache/upstart/update-notifier-cds.log" 2016-1-12-11:21:21
+"/home/monika/.cache/upstart/at-spi2-registryd.log" 2016-1-18-12:19:31
